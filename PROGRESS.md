@@ -13,7 +13,16 @@ Step A complete (code) — awaiting user manual verification (Python install + r
 - [ ] Step G: README expansion (dummy X account, NSSM Windows service)
 
 ## Last session ended
-2026-04-27 — session 1. Built repo skeleton; awaiting user verification (Python install + manual run).
+2026-04-28 — session 1 finalized. Repo skeleton built, Python 3.11.9 installed via winget, venv + deps OK, all 14 pytest tests pass, env validation verified (exit 1 + clear missing-vars message), bot boots cleanly and connects to Telegram (`getMe` 200 OK). Awaiting user-side Telegram smoke test (`/start`, `/status`, `/handles`, `/pause`, `/resume`, allowlist).
+
+## Decisions made this session (autonomous, per user instruction 2026-04-28)
+- **Token-leak fix:** `httpx`, `httpcore`, `apscheduler`, `telegram.ext.Application` loggers pinned to `WARNING` in `main.py::_setup_logging`. Reason: `httpx` at INFO logs full request URLs, which include `bot<TOKEN>/...`. Project-owned loggers (`signal_bot.*`) still honour `LOG_LEVEL`.
+- **Event-loop fix:** original `main.py` did `asyncio.run(setup)` *then* `app.run_polling()`, which crashed on Python 3.11 (no current event loop after `asyncio.run` closes it). Refactored to PTB v21's `post_init` callback pattern — `init_db` and handle seeding now run inside PTB's own event loop. `build_application` gained an optional `post_init: PostInitFn | None` parameter.
+- **PowerShell venv activation:** documented `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` as the standard fix for the "running scripts is disabled" error.
+
+## Step B prep (locked in this session)
+- Dummy X account confirmed by user (research-only, 0 followers, 22 follows backed up in Discord).
+- All 8 Step-B clarifications accepted defaults: pin twikit version after first run, alert once per broken state, explicit `Circuit:` line in `/status`, UTC + relative time, `set_my_commands` on startup, log rotation immediate, backfill 5 with `is_backfill` flag, graceful shutdown, health endpoint as TODO.
 
 ## Open decisions (resolved this session)
 - Embeddings: local `sentence-transformers/all-MiniLM-L6-v2` only.

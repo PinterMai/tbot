@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from functools import wraps
 from pathlib import Path
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -20,6 +20,7 @@ from signal_bot.storage import db as dbmod
 log = logging.getLogger(__name__)
 
 HandlerFn = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]
+PostInitFn = Callable[[Application], Awaitable[None]]
 
 
 def allowlist(allowed_user_id: int) -> Callable[[HandlerFn], HandlerFn]:
@@ -43,9 +44,20 @@ def allowlist(allowed_user_id: int) -> Callable[[HandlerFn], HandlerFn]:
     return decorator
 
 
-def build_application(settings: Settings, db_path: Path = DB_PATH) -> Application:
-    """Build the python-telegram-bot Application with all Step-A handlers wired."""
-    app = Application.builder().token(settings.telegram_bot_token).build()
+def build_application(
+    settings: Settings,
+    db_path: Path = DB_PATH,
+    post_init: PostInitFn | None = None,
+) -> Application:
+    """Build the python-telegram-bot Application with all Step-A handlers wired.
+
+    ``post_init`` runs once inside PTB's event loop after the bot is ready —
+    use this for any async setup (e.g. ``init_db`` and seeding handles).
+    """
+    builder = Application.builder().token(settings.telegram_bot_token)
+    if post_init is not None:
+        builder = builder.post_init(post_init)
+    app = builder.build()
     app.bot_data["db_path"] = db_path
     app.bot_data["settings"] = settings
 
