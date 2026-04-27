@@ -13,7 +13,12 @@ Step A complete (code) — awaiting user manual verification (Python install + r
 - [ ] Step G: README expansion (dummy X account, NSSM Windows service)
 
 ## Last session ended
-2026-04-28 — session 1 finalized. Repo skeleton built, Python 3.11.9 installed via winget, venv + deps OK, all 14 pytest tests pass, env validation verified (exit 1 + clear missing-vars message), bot boots cleanly and connects to Telegram (`getMe` 200 OK). Awaiting user-side Telegram smoke test (`/start`, `/status`, `/handles`, `/pause`, `/resume`, allowlist).
+2026-04-28 — session 1 fully closed. Repo skeleton built, Python 3.11.9 installed via winget, venv + deps OK, all 14 pytest tests pass, env validation verified (exit 1 + clear missing-vars message), bot boots cleanly and connects to Telegram (`getMe` 200 OK). **User-confirmed: Telegram bot responds to `/start /status /handles /pause /resume`, allowlist works.** Step A is DONE.
+
+## Next session — Step B start checklist
+1. User adds `X_AUTH_TOKEN=` to `.env` (dummy account cookie).
+2. Confirm decisions from session 1 still stand (see "Decisions made this session" + "Step B prep" below).
+3. Begin Step B implementation: twikit source + ingest loop + errors table population + circuit breaker.
 
 ## Decisions made this session (autonomous, per user instruction 2026-04-28)
 - **Token-leak fix:** `httpx`, `httpcore`, `apscheduler`, `telegram.ext.Application` loggers pinned to `WARNING` in `main.py::_setup_logging`. Reason: `httpx` at INFO logs full request URLs, which include `bot<TOKEN>/...`. Project-owned loggers (`signal_bot.*`) still honour `LOG_LEVEL`.
