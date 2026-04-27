@@ -4,7 +4,7 @@
 Step A complete (code) — awaiting user manual verification (Python install + run)
 
 ## Completed
-- [x] Step A: repo skeleton, SQLite schema, Telegram bot with `/start /status /pause /resume /handles`, allowlist, env validation, pytest tests
+- [x] Step A: repo skeleton, SQLite schema, Telegram bot with `/start /status /pause /resume /handles`, allowlist, env validation, pytest tests (commit `2171ebd`)
 - [ ] Step B: twikit source + ingest loop, errors table population, circuit breaker, alert on 3 empty polls
 - [ ] Step C: keyword filter + embedding cluster (sentence-transformers local)
 - [ ] Step D: Research step (Claude + web search), strict JSON schema
