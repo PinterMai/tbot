@@ -1,0 +1,88 @@
+# Topic keywords for the first-pass filter (Step C).
+# Each topic has: keywords (any case-insensitive regex match passes) and a weight.
+# A tweet passes the filter if it matches any topic and no negative keyword.
+
+topics:
+  ai_models:
+    keywords:
+      - "GPT-?\\d"
+      - "Claude\\s?\\d"
+      - "Gemini"
+      - "Llama"
+      - "Mistral"
+      - "Grok"
+      - "DeepSeek"
+      - "model release"
+      - "open[- ]source model"
+      - "weights released"
+    weight: 1.0
+
+  ai_infrastructure:
+    keywords:
+      - "training cluster"
+      - "datacenter"
+      - "data center"
+      - "inference"
+      - "GPU shortage"
+      - "compute bottleneck"
+      - "interconnect"
+      - "NVLink"
+      - "InfiniBand"
+      - "cooling"
+      - "power constraint"
+    weight: 1.2
+
+  semiconductors:
+    keywords:
+      - "TSMC"
+      - "ASML"
+      - "EUV"
+      - "lithograph"
+      - "fab"
+      - "wafer"
+      - "node\\s?\\d+nm"
+      - "3nm"
+      - "2nm"
+      - "yield"
+      - "chip ban"
+      - "export control"
+    weight: 1.2
+
+  compute_silicon:
+    keywords:
+      - "H100"
+      - "H200"
+      - "B100"
+      - "B200"
+      - "GB200"
+      - "MI300"
+      - "MI325"
+      - "TPU"
+      - "Trainium"
+      - "Inferentia"
+      - "photonic"
+      - "neuromorphic"
+      - "RISC-?V"
+    weight: 1.0
+
+  companies:
+    keywords:
+      - "NVIDIA"
+      - "NVDA"
+      - "AMD"
+      - "Intel"
+      - "Broadcom"
+      - "AVGO"
+      - "Marvell"
+      - "Cerebras"
+      - "Groq"
+      - "SambaNova"
+      - "Lightmatter"
+      - "Tenstorrent"
+      - "Etched"
+    weight: 0.8
+
+# Negative keywords: even if a topic matches, skip if any of these appear.
+negative:
+  - "shitpost"
+  - "lmao"

@@ -1,0 +1,9 @@
+# Public Nitter instances. Most are dead in 2026.
+# Strategy B health-checks these on startup with a 30 s total budget.
+# If all fail, log a warning and silently fall back to twikit.
+
+instances:
+  - https://nitter.net
+  - https://nitter.privacydev.net
+  - https://nitter.poast.org
+  - https://nitter.kavin.rocks

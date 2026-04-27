@@ -1,0 +1,19 @@
+# Initial X handles to track. User can add/remove via /add and /remove (Step B+).
+# Seeded into the `handles` table on first startup if the table is empty.
+
+handles:
+  - dylan522p          # SemiAnalysis
+  - sama               # Sam Altman
+  - karpathy           # Andrej Karpathy
+  - jimfan             # Jim Fan
+  - DrJimFan
+  - tszzl              # roon
+  - swyx
+  - amir               # Amir Efrati
+  - dmvaldman
+  - alexandr_wang      # Scale AI
+
+# Single high-signal tweets from these handles bypass the cluster-of-2 rule.
+high_priority:
+  - dylan522p
+  - karpathy
