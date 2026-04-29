@@ -69,12 +69,23 @@ These are persistent operating instructions for any Claude Code session that ope
 - Never ask the user to paste tokens in chat.
 - All secrets live in `.env` (gitignored). `.env.example` has empty values.
 
-## Step B specific (twikit) — for the next session
+## Step B (twikit) — implemented
 
+- Source: `signal_bot/sources/twikit_source.py::TwikitSource` (twikit 2.3.3, pinned).
+- Pipeline: `signal_bot/pipeline/ingest.py::run_ingest_cycle` (one tick = poll all enabled handles).
+- Scheduling: PTB JobQueue, interval = `POLL_INTERVAL_MIN * 60`, first tick at +10s.
+- Auth: prefer `X_COOKIES_FILE` (full session JSON exported from a logged-in browser);
+  `X_AUTH_TOKEN` alone is a documented-broken fallback (twikit's `ClientTransaction.init`
+  needs the homepage anti-bot key, which fails without `ct0`/full cookies).
 - Every twikit error → `errors` table (`timestamp, handle, error_type, message, traceback`).
-- `/status` shows the last 5 errors.
-- 3 consecutive empty polling cycles across all handles → Telegram alert: "ingest may be broken".
-- Circuit breaker: 10 consecutive errors → pause polling for 1 hour, log it loudly, surface in `/status`.
-- Rate limit: max 1 request / 3 sec, ~500 tweets/day total via `asyncio.Semaphore`.
-- Persist `last_seen_tweet_id` per handle in the `handles` table (column already present).
-- `X_AUTH_TOKEN` missing → fail with `"X_AUTH_TOKEN missing — see README section 'Dummy X account setup'"`.
+- `/status` shows last 5 errors, last poll time (UTC + relative), last poll status, and
+  an explicit `Circuit:` line when the circuit is open.
+- 3 consecutive empty polling cycles → one-shot Telegram alert ("ingest may be broken");
+  re-armed once a non-empty cycle occurs.
+- Circuit breaker: 10 consecutive all-fail cycles → polling paused for 1 hour, one-shot alert,
+  state stored in `state` table (`circuit_open_until`, `consecutive_errors`).
+- Rate limit: 1 request / 3 sec via `asyncio.Semaphore` inside `TwikitSource`.
+- Backfill: first poll for a handle returns up to 5 tweets, marked `is_backfill=1`.
+- Retweets are filtered out at the source layer.
+- Logs: console + `logs/signal_bot.log` (RotatingFileHandler, 10 MB × 5 backups).
+- `set_my_commands` is called on startup so Telegram clients show command autocomplete.

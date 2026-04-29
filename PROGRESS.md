@@ -1,11 +1,11 @@
 # Build Progress
 
 ## Current step
-Step A complete (code) — awaiting user manual verification (Python install + run)
+Step B complete (code) — awaiting user manual verification (live ingest cycle with valid cookies)
 
 ## Completed
 - [x] Step A: repo skeleton, SQLite schema, Telegram bot with `/start /status /pause /resume /handles`, allowlist, env validation, pytest tests (commit `2171ebd`)
-- [ ] Step B: twikit source + ingest loop, errors table population, circuit breaker, alert on 3 empty polls
+- [x] Step B: twikit source + ingest loop, errors table, circuit breaker, alert on 3 empty polls, backfill, log rotation, set_my_commands, /status enrichment
 - [ ] Step C: keyword filter + embedding cluster (sentence-transformers local)
 - [ ] Step D: Research step (Claude + web search), strict JSON schema
 - [ ] Step E: Verify pass + ticker validation + ranking
@@ -13,34 +13,83 @@ Step A complete (code) — awaiting user manual verification (Python install + r
 - [ ] Step G: README expansion (dummy X account, NSSM Windows service)
 
 ## Last session ended
-2026-04-28 — session 1 fully closed. Repo skeleton built, Python 3.11.9 installed via winget, venv + deps OK, all 14 pytest tests pass, env validation verified (exit 1 + clear missing-vars message), bot boots cleanly and connects to Telegram (`getMe` 200 OK). **User-confirmed: Telegram bot responds to `/start /status /handles /pause /resume`, allowlist works.** Step A is DONE.
+2026-04-29 — Step B code complete. 41 pytest tests pass. Bot boots cleanly, JobQueue fires the
+first ingest cycle at +10s, all 10 seeded handles get polled, errors are correctly captured to
+the `errors` table, circuit breaker counters advance, `set_my_commands` registers, log rotation
+file is created at `logs/signal_bot.log`. **Live fetch fails with `AttributeError:
+'ClientTransaction' object has no attribute 'key'` because `X_AUTH_TOKEN` alone is insufficient
+for twikit's anti-bot transaction-id flow** — see "Known issues" below.
 
-## Next session — Step B start checklist
-1. User adds `X_AUTH_TOKEN=` to `.env` (dummy account cookie).
-2. Confirm decisions from session 1 still stand (see "Decisions made this session" + "Step B prep" below).
-3. Begin Step B implementation: twikit source + ingest loop + errors table population + circuit breaker.
+## Next session — Step B verification checklist
+1. User exports full cookies (auth_token + ct0 + everything else from a logged-in
+   `x.com` browser tab) into `data/x_cookies.json` and sets `X_COOKIES_FILE=data/x_cookies.json`
+   in `.env`. **Do NOT paste cookies in chat.**
+2. Confirm `pytest -q` is still 41 passed.
+3. Run `python bot.py` (or `python -m signal_bot.main`) and wait ~15 s for the first cycle.
+4. Expected: log shows `ingest cycle: handles=10 new=N errors=0 status=ok`, `data/signal_bot.db`
+   has new rows in `tweets`, `/status` shows non-zero `Tweets:` and a non-`never` `Last poll:`.
+5. If verified: ask user to confirm Step C transition (keyword filter + embedding cluster).
+
+## Step B — what got built
+- `signal_bot/sources/twikit_source.py::TwikitSource` — cookie auth (preferring
+  `X_COOKIES_FILE`, falling back to `X_AUTH_TOKEN`), 1 req/3 s rate limiting via
+  `asyncio.Semaphore`, retweet filtering, page-walk on subsequent fetches that
+  stops at the previously-seen `since_id` (max 5 pages of look-back as a safety cap).
+- `signal_bot/pipeline/ingest.py::run_ingest_cycle` — single cycle: respects `paused`,
+  honours/expires the circuit breaker, polls each enabled handle in priority order,
+  persists tweets (deduped by id), logs per-handle errors, advances counters,
+  emits one-shot alerts.
+- `signal_bot/main.py` — JobQueue scheduling, `set_my_commands`, RotatingFileHandler
+  (10 MB × 5 backups at `logs/signal_bot.log`), graceful "ingest disabled" fallback when
+  no source can be built.
+- `signal_bot/bot.py::cmd_status` — UTC + relative time on `Last poll:`, optional
+  `Circuit: OPEN until ...` line, status suffix (`[ok]`/`[empty]`/`[errors]`/`[circuit_open]`).
+- `signal_bot/storage/db.py` — `insert_tweet` (with `is_backfill` flag), `update_handle_seen`,
+  lightweight `_migrate_tweets_columns` ALTER TABLE migration so existing DBs gain
+  `is_backfill` and `fetched_at` without dropping data.
+- Tests: 16 new (`tests/test_ingest.py`, `tests/test_twikit_source.py`,
+  `tests/test_status_format.py`). All 41 pass.
 
 ## Decisions made this session (autonomous, per user instruction 2026-04-28)
-- **Token-leak fix:** `httpx`, `httpcore`, `apscheduler`, `telegram.ext.Application` loggers pinned to `WARNING` in `main.py::_setup_logging`. Reason: `httpx` at INFO logs full request URLs, which include `bot<TOKEN>/...`. Project-owned loggers (`signal_bot.*`) still honour `LOG_LEVEL`.
-- **Event-loop fix:** original `main.py` did `asyncio.run(setup)` *then* `app.run_polling()`, which crashed on Python 3.11 (no current event loop after `asyncio.run` closes it). Refactored to PTB v21's `post_init` callback pattern — `init_db` and handle seeding now run inside PTB's own event loop. `build_application` gained an optional `post_init: PostInitFn | None` parameter.
-- **PowerShell venv activation:** documented `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` as the standard fix for the "running scripts is disabled" error.
-
-## Step B prep (locked in this session)
-- Dummy X account confirmed by user (research-only, 0 followers, 22 follows backed up in Discord).
-- All 8 Step-B clarifications accepted defaults: pin twikit version after first run, alert once per broken state, explicit `Circuit:` line in `/status`, UTC + relative time, `set_my_commands` on startup, log rotation immediate, backfill 5 with `is_backfill` flag, graceful shutdown, health endpoint as TODO.
-
-## Open decisions (resolved this session)
-- Embeddings: local `sentence-transformers/all-MiniLM-L6-v2` only.
-- Model IDs: `claude-opus-4-7` (`MODEL_OPUS`), `claude-sonnet-4-6` (`MODEL_SONNET`) pinned in `signal_bot/llm/client.py`.
-- Chrome/Playwright source: OUT of MVP scope; revisit after twikit has run 2+ weeks.
-- Nitter health-check budget: 30 s, then silently fall back to twikit.
-
-## Open for Step B
-- User confirms dummy X account exists before pasting `X_AUTH_TOKEN` into `.env`.
-- Pin `twikit` version after first successful run (note in `pyproject.toml`).
-- Decide log-rotation strategy for `dry_run.log` once we generate volume.
-- Confirm whether `/status` should also show circuit-breaker state explicitly when active.
+- **Cookie auth strategy:** `X_COOKIES_FILE` (path to JSON dict) is preferred and documented
+  as the working path; `X_AUTH_TOKEN` alone is kept as a fallback but documented to be
+  broken on twikit 2.3.3's `ClientTransaction.init` flow. Reason: twikit needs the homepage
+  anti-bot key, which X only serves to fully-authenticated sessions.
+- **Twikit version pin:** `twikit==2.3.3` in `pyproject.toml`. Reason: matches what was
+  installed and verified to load + invoke. Bumping later is one-line.
+- **State storage:** circuit/empty-poll counters live in the existing `state` table as
+  string-encoded ints, not in dedicated columns. Reason: zero schema churn, fits the
+  "no premature abstraction" rule, and `_get_int`/`_set_int` helpers wrap the cast.
+- **Alert dedup:** stored as a single `alert_state` key in `state` (`""`, `"broken_empty"`,
+  `"broken_circuit"`). Re-armed when counters return to 0. Reason: simpler than per-alert
+  timestamps, and "alert once per broken state" is exactly what was requested.
+- **Page-walk safety cap:** 5 pages on subsequent fetches before giving up looking for
+  `since_id`. Reason: protects against unbounded scrolling if X stops returning the
+  expected `since_id` (e.g. tweet deleted upstream).
+- **Schema migration:** `ALTER TABLE tweets ADD COLUMN ... DEFAULT 0` for `is_backfill`
+  and `fetched_at` instead of dropping the existing `data/signal_bot.db`. Reason:
+  preserves Step A handle seed; SQLite supports this cleanly.
 
 ## Known issues / TODOs
-- Python is NOT installed on the host (only the Microsoft Store shim). Step A's first manual test step is `winget install Python.Python.3.11`.
-- All test-running and `python bot.py` smoke-checks must be run by the user; this session could not execute them.
+- **Live fetch is blocked until full cookies are provided.** Concrete error
+  observed during smoke test: `AttributeError: 'ClientTransaction' object has no
+  attribute 'key'` from `twikit/x_client_transaction/transaction.py:145` —
+  `ClientTransaction.init()` runs but its `validate_response`/`get_key` step
+  fails to extract the homepage key when the request is only partially
+  authenticated. Fix path: export full cookies (auth_token + ct0 + all others)
+  to `data/x_cookies.json` and point `X_COOKIES_FILE` at it.
+- Step B's READMe/dummy-account doc work is deferred to Step G per the original plan.
+- The Windows event-loop policy gets flipped to `WindowsSelectorEventLoopPolicy`
+  by twikit's `__init__.py` at import time. PTB v21 still works under it
+  (verified during smoke test), but if we ever need subprocess support in
+  this process we'll need to revisit.
+- A `BLE001` (broad-except) lint warning would fire on the per-handle and
+  set_my_commands try/except blocks — these are intentional (we never want a
+  single-handle failure to abort the whole cycle, and `set_my_commands` is
+  best-effort). If we add ruff to CI, add `# noqa: BLE001` or scope the catch.
+
+## Open for Step C
+- Confirm Step C scope: keyword filter (regex from `config/topics.yaml`) +
+  semantic clustering with `sentence-transformers/all-MiniLM-L6-v2`.
+- Decide cluster cadence: every cycle vs. dedicated job? Default plan: run after
+  each ingest cycle on the unprocessed-tweets backlog.

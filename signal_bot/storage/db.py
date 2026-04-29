@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS tweets (
     raw_json        TEXT NOT NULL,        -- full source payload
     processed_at    TEXT,                 -- when pipeline last touched
     filtered_out    INTEGER NOT NULL DEFAULT 0,
-    filter_reason   TEXT
+    filter_reason   TEXT,
+    is_backfill     INTEGER NOT NULL DEFAULT 0,
+    fetched_at      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tweets_handle   ON tweets(handle);
 CREATE INDEX IF NOT EXISTS idx_tweets_created  ON tweets(created_at);
@@ -103,12 +105,25 @@ def utcnow_iso() -> str:
 
 
 async def init_db(db_path: Path) -> None:
-    """Create the DB file (and parent dir) and apply the schema."""
+    """Create the DB file (and parent dir), apply the schema, run lightweight migrations."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(db_path) as conn:
         await conn.execute("PRAGMA foreign_keys = ON;")
         await conn.executescript(SCHEMA)
+        await _migrate_tweets_columns(conn)
         await conn.commit()
+
+
+async def _migrate_tweets_columns(conn: aiosqlite.Connection) -> None:
+    """Idempotent: ensure ``is_backfill`` and ``fetched_at`` columns exist on ``tweets``."""
+    async with conn.execute("PRAGMA table_info(tweets)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    if "is_backfill" not in cols:
+        await conn.execute(
+            "ALTER TABLE tweets ADD COLUMN is_backfill INTEGER NOT NULL DEFAULT 0"
+        )
+    if "fetched_at" not in cols:
+        await conn.execute("ALTER TABLE tweets ADD COLUMN fetched_at TEXT")
 
 
 @asynccontextmanager
@@ -151,7 +166,57 @@ async def set_paused(conn: aiosqlite.Connection, paused: bool) -> None:
     await set_state(conn, "paused", "1" if paused else "0")
 
 
+# ---------- tweets ----------
+
+async def insert_tweet(
+    conn: aiosqlite.Connection,
+    *,
+    tweet_id: str,
+    handle: str,
+    text: str,
+    created_at: str,
+    url: str,
+    raw_json: str,
+    is_backfill: bool = False,
+) -> bool:
+    """Insert a tweet. Returns True if newly inserted, False if it already existed."""
+    cur = await conn.execute(
+        """
+        INSERT OR IGNORE INTO tweets
+            (id, handle, text, created_at, url, raw_json, is_backfill, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            tweet_id, handle, text, created_at, url, raw_json,
+            1 if is_backfill else 0, utcnow_iso(),
+        ),
+    )
+    await conn.commit()
+    return cur.rowcount > 0
+
+
 # ---------- handles ----------
+
+async def update_handle_seen(
+    conn: aiosqlite.Connection, handle: str, last_seen_tweet_id: str | None
+) -> None:
+    """Stamp ``last_polled_at`` and (optionally) ``last_seen_tweet_id`` for a handle."""
+    if last_seen_tweet_id is None:
+        await conn.execute(
+            "UPDATE handles SET last_polled_at = ? WHERE handle = ?",
+            (utcnow_iso(), handle),
+        )
+    else:
+        await conn.execute(
+            """
+            UPDATE handles
+            SET last_polled_at = ?, last_seen_tweet_id = ?
+            WHERE handle = ?
+            """,
+            (utcnow_iso(), last_seen_tweet_id, handle),
+        )
+    await conn.commit()
+
 
 async def upsert_handle(
     conn: aiosqlite.Connection,
@@ -246,6 +311,8 @@ __all__ = [
     "set_state",
     "is_paused",
     "set_paused",
+    "insert_tweet",
+    "update_handle_seen",
     "upsert_handle",
     "list_handles",
     "log_error",

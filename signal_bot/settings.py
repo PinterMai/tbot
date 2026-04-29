@@ -30,6 +30,7 @@ class Settings:
     allowed_user_id: int
     anthropic_api_key: str | None
     x_auth_token: str | None
+    x_cookies_file: Path | None
     dry_run: bool
     poll_interval_min: int
     tweet_source: str
@@ -76,11 +77,15 @@ def load_settings(env_path: Path | None = None) -> Settings:
         print("ERROR: POLL_INTERVAL_MIN must be an integer (minutes).", file=sys.stderr)
         sys.exit(1)
 
+    cookies_raw = (os.environ.get("X_COOKIES_FILE") or "").strip()
+    cookies_path: Path | None = Path(cookies_raw) if cookies_raw else None
+
     return Settings(
         telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"].strip(),
         allowed_user_id=allowed_user_id,
         anthropic_api_key=(os.environ.get("ANTHROPIC_API_KEY") or "").strip() or None,
         x_auth_token=(os.environ.get("X_AUTH_TOKEN") or "").strip() or None,
+        x_cookies_file=cookies_path,
         dry_run=_truthy(os.environ.get("DRY_RUN", "true")),
         poll_interval_min=poll_interval_min,
         tweet_source=(os.environ.get("TWEET_SOURCE", "twikit") or "twikit").strip(),
